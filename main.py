@@ -1,12 +1,11 @@
 import streamlit as st
 import math
-import plotly.graph_objects as go
-import pandas as pd
+import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="기계 요소 응력 해석 시뮬레이터", layout="wide")
 st.title("⚙️ 기계 요소 응력 해석 시뮬레이터")
 
-# 사이드바에 입력 배치
+# 입력 변수 사이드바
 st.sidebar.header("입력 변수")
 
 diameter = st.sidebar.number_input("축 직경 (mm)", min_value=1.0, max_value=500.0, value=50.0, step=0.1)
@@ -35,7 +34,15 @@ bending_stress = bending_moment * c / I / 1e6  # MPa
 max_stress = axial_stress + bending_stress
 safety_factor = allowable_stress / max_stress if max_stress != 0 else float('inf')
 
-# 결과 표시 레이아웃
+# 컬러 정하기
+if safety_factor > 1.5:
+    color = 'green'
+elif safety_factor >= 1:
+    color = 'orange'
+else:
+    color = 'red'
+
+# 레이아웃
 col1, col2 = st.columns([2,3])
 
 with col1:
@@ -44,7 +51,7 @@ with col1:
     st.metric("굽힘 응력 (Bending Stress, MPa)", f"{bending_stress:.2f}")
     st.metric("최대 응력 (Max Stress, MPa)", f"{max_stress:.2f}")
     st.metric("허용 응력 (Allowable Stress, MPa)", f"{allowable_stress}")
-    st.metric("안전율 (Safety Factor)", f"{safety_factor:.2f}")
+    st.metric("안전율 (Safety Factor)", f"{safety_factor:.2f}", delta=None)
 
     if safety_factor > 1.5:
         st.success("안전합니다! 😊")
@@ -56,33 +63,30 @@ with col1:
 with col2:
     st.subheader("🛠️ 응력 분포 시각화")
 
-    # 색깔 정하기 (안전율이 높을수록 초록, 낮을수록 빨강)
-    def safety_color(sf):
-        if sf > 1.5:
-            return 'green'
-        elif sf >= 1:
-            return 'orange'
-        else:
-            return 'red'
-
-    colors = ['blue', 'orange', safety_color(safety_factor)]
+    stresses = [axial_stress, bending_stress, max_stress]
     labels = ['축 응력', '굽힘 응력', '최대 응력']
+    colors = ['blue', 'orange', color]
 
-    fig = go.Figure(data=[go.Bar(
-        x=labels,
-        y=[axial_stress, bending_stress, max_stress],
-        marker_color=colors,
-        text=[f"{axial_stress:.2f}", f"{bending_stress:.2f}", f"{max_stress:.2f}"],
-        textposition='auto'
-    )])
-    fig.update_layout(yaxis_title="응력 (MPa)",
-                      title="응력 분포",
-                      yaxis=dict(range=[0, max(max_stress*1.2, allowable_stress*1.2)]))
+    fig, ax = plt.subplots(figsize=(6,4))
+    bars = ax.bar(labels, stresses, color=colors)
+    ax.set_ylabel('응력 (MPa)')
+    ax.set_ylim(0, max(max_stress*1.2, allowable_stress*1.2))
+    ax.set_title("응력 분포")
 
-    st.plotly_chart(fig, use_container_width=True)
+    for bar, stress in zip(bars, stresses):
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2, height*1.02, f'{stress:.2f}', ha='center', va='bottom')
+
+    # 허용 응력 라인 추가
+    ax.axhline(y=allowable_stress, color='red', linestyle='--', label='허용 응력')
+    ax.legend()
+
+    st.pyplot(fig)
 
 st.markdown("---")
 st.subheader("재료별 허용 응력 표 (MPa)")
+
+import pandas as pd
 df_materials = pd.DataFrame(list(materials.items()), columns=["재료", "허용 응력 (MPa)"])
 st.dataframe(df_materials.style.highlight_max(axis=0, color='lightgreen'))
 
@@ -93,3 +97,4 @@ st.write("""
 - 안전율이 1 이상이면 기본적으로 안전하지만, 1.5 이상을 권장합니다.
 - 그래프와 색상으로 한눈에 상태를 확인할 수 있습니다.
 """)
+
